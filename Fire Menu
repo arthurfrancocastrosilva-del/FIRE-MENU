@@ -1,0 +1,256 @@
+--! FIRE MENU (LocalScript - Script Consolidado para Estudo)
+-- Este script deve ser injetado em um executor para rodar no lado do cliente.
+-- Ele combina as lógicas de Fly, ESP, Aimbot e a detecção de comando /revistar.
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+-- =========================================================================
+-- VARIÁVEIS DE ESTADO E CONFIGURAÇÃO
+-- =========================================================================
+local Toggles = {
+    Fly = false,
+    ESP = false,
+    Aimbot = false,
+    AutoRevistar = false,
+}
+
+local Config = {
+    FlySpeed = 25,
+    ESP_HighlightColor = Color3.fromRGB(255, 0, 0), -- Vermelho
+    ESP_MaxDistance = 3000,
+}
+
+-- Referências iniciais do Player (necessárias para Fly/Aimbot)
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- =========================================================================
+-- UI LÓGICA (Simplificada: Foco em Toggles, não na UI visual)
+-- =========================================================================
+-- Nota para Estudo: Em um script real, esta seção teria as referências
+-- e funções para os botões e TextBoxes. Aqui, usamos print() para simular o toggle.
+
+local function ToggleFeature(featureName)
+    Toggles[featureName] = not Toggles[featureName] -- Inverte o estado
+    local status = Toggles[featureName]
+    
+    print("FIRE MENU: " .. featureName .. " está " .. (status and "ATIVADO" or "DESATIVADO"))
+    
+    -- Lógica de inicialização/limpeza específica pode ser adicionada aqui
+    if featureName == "Fly" then
+        if status then
+             LocalPlayer.Character.Humanoid.PlatformStand = true -- Inicia o voo
+        else
+             LocalPlayer.Character.Humanoid.PlatformStand = false -- Para o voo
+        end
+    end
+end
+
+-- Para testes rápidos, você pode chamar ToggleFeature("Fly") no console ou no script.
+
+-- =========================================================================
+-- 1. FLY + CONTROLE DE VELOCIDADE
+-- =========================================================================
+
+-- Lógica de voo (usando RenderStepped para suavidade no cliente)
+RunService.RenderStepped:Connect(function()
+    if Toggles.Fly and HumanoidRootPart and LocalPlayer.Character.Humanoid.PlatformStand then
+        local camCFrame = Workspace.CurrentCamera.CFrame
+        local moveVector = Vector3.new(0, 0, 0)
+
+        -- Leitura de Input (WASD para horizontal)
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            moveVector = moveVector + camCFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            moveVector = moveVector - camCFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            moveVector = moveVector - camCFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            moveVector = moveVector + camCFrame.RightVector
+        end
+        
+        -- Leitura de Input (Espaço/Shift para vertical)
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            moveVector = moveVector + Vector3.new(0, 1, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            moveVector = moveVector - Vector3.new(0, 1, 0)
+        end
+        
+        if moveVector.Magnitude > 0 then
+            -- Aplica a velocidade de voo. Use Config.FlySpeed (padrão 25)
+            HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + moveVector.unit * Config.FlySpeed * RunService.RenderStepped:Wait()
+        end
+        
+        -- Garante que a rotação do personagem siga a câmera
+        HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position) * camCFrame.Rotation
+    end
+end)
+
+
+-- =========================================================================
+-- 2. AUTO REVISTAR (COMANDO NO CHAT)
+-- =========================================================================
+
+LocalPlayer.Chatted:Connect(function(message)
+    if Toggles.AutoRevistar and message:lower() == "/revistar" then
+        print("Auto Revistar: Comando detectado. Tentando transferir itens do último alvo...")
+        
+        -- Nota para Estudo: O código de transferência REAL deve ser
+        -- validado e executado pelo servidor para funcionar.
+        -- Aqui, simulamos o disparo de um evento remoto (RemoteEvent).
+        
+        -- Exemplo de disparo remoto:
+        -- local LootEvent = game:GetService("ReplicatedStorage"):FindFirstChild("LootEvent") 
+        -- if LootEvent then
+        --     LootEvent:FireServer("NomeDoUltimoInimigoMorto")
+        -- end
+        
+        -- Apenas para demonstração de lógica:
+        print("Auto Revistar: Disparando evento remoto para o servidor (Ação requer Servidor).")
+    end
+end)
+
+
+-- =========================================================================
+-- 3. ESP (HIGHLIGHT E INVENTÁRIO)
+-- =========================================================================
+
+-- Função auxiliar para criar o BillboardGui de Inventário
+local function createInventoryDisplay(character)
+    local bgui = Instance.new("BillboardGui")
+    bgui.Name = "ESP_Display"
+    bgui.Size = UDim2.new(0, 200, 0, 100)
+    bgui.ExtentsOffset = Vector3.new(0, 5, 0) 
+    bgui.AlwaysOnTop = true
+    bgui.Parent = character:WaitForChild("Head") 
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.TextScaled = true
+    textLabel.TextStrokeTransparency = 0.5
+    textLabel.TextColor3 = Color3.new(1, 1, 1)
+    textLabel.Text = "Loading..."
+    textLabel.Parent = bgui
+    
+    return bgui
+end
+
+-- Loop de renderização do ESP
+RunService.Stepped:Connect(function()
+    for _, player in ipairs(Players:GetPlayers()) do
+        local character = player.Character
+        
+        if player ~= LocalPlayer and character and character:FindFirstChild("HumanoidRootPart") then
+            local hRoot = character.HumanoidRootPart
+            local distance = (HumanoidRootPart.Position - hRoot.Position).Magnitude
+            
+            -- Estado ATIVADO: Criar/Atualizar Destaques e Displays
+            if Toggles.ESP and distance < Config.ESP_MaxDistance then
+                -- Criar Highlight (Destaque)
+                local highlight = hRoot:FindFirstChild("PlayerHighlight")
+                if not highlight then
+                    highlight = Instance.new("Highlight")
+                    highlight.Name = "PlayerHighlight"
+                    highlight.Adornee = character
+                    highlight.FillTransparency = 0.5
+                    highlight.OutlineColor = Config.ESP_HighlightColor
+                    highlight.Parent = hRoot
+                end
+
+                -- Criar/Atualizar Display de Inventário
+                local display = character.Head:FindFirstChild("ESP_Display")
+                if not display then
+                    display = createInventoryDisplay(character)
+                end
+                
+                local invText = player.Name .. "\n"
+                local tools = {}
+                
+                for _, tool in ipairs(player:FindFirstChildOfClass("Backpack"):GetChildren()) do
+                    table.insert(tools, tool.Name)
+                end
+                if character:FindFirstChildOfClass("Tool") then
+                    table.insert(tools, character:FindFirstChildOfClass("Tool").Name .. " (Equipado)")
+                end
+                
+                display.TextLabel.Text = invText .. "Itens: " .. table.concat(tools, ", ")
+
+            -- Estado DESATIVADO/Fora de Alcance: Limpar Destaques e Displays
+            elseif hRoot:FindFirstChild("PlayerHighlight") or character.Head:FindFirstChild("ESP_Display") then
+                if hRoot:FindFirstChild("PlayerHighlight") then hRoot.PlayerHighlight:Destroy() end
+                if character.Head:FindFirstChild("ESP_Display") then character.Head.ESP_Display:Destroy() end
+            end
+        end
+    end
+end)
+
+-- =========================================================================
+-- 4. AIMBOT
+-- =========================================================================
+
+-- Função auxiliar para encontrar o alvo mais próximo
+local function findNearestTarget()
+    local nearestTarget = nil
+    local shortestDistance = math.huge
+    local myPosition = HumanoidRootPart.Position
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+            local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            if targetRoot then
+                local distance = (myPosition - targetRoot.Position).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    nearestTarget = targetRoot
+                end
+            end
+        end
+    end
+    return nearestTarget
+end
+
+-- Loop principal do Aimbot (usando Heartbeat para lógica de jogo)
+RunService.Heartbeat:Connect(function()
+    if Toggles.Aimbot and LocalPlayer.Character then
+        local target = findNearestTarget()
+        
+        if target then
+            local camera = Workspace.CurrentCamera
+            
+            -- Ponto alvo (mira no centro do corpo, ajustando 1 stud acima)
+            local targetPoint = target.Position + Vector3.new(0, 1, 0) 
+            
+            -- Aplica a mira forçando a CFrame da Câmera a olhar para o alvo
+            local lookAtCFrame = CFrame.new(camera.CFrame.Position, targetPoint)
+            
+            camera.CFrame = lookAtCFrame
+            
+            -- Lógica de Disparo (Simulação):
+            -- Para disparar, você precisaria de um input (ex: MouseButton1)
+            -- if UserInputService:IsKeyDown(Enum.KeyCode.MouseButton1) then
+            --     -- Aqui você colocaria o código para simular o clique ou disparar o RemoteEvent da arma.
+            -- end
+        end
+    end
+end)
+
+-- =========================================================================
+-- INSTRUÇÃO DE USO E TESTE
+-- =========================================================================
+
+print("--- FIRE MENU - Script de Estudo Carregado ---")
+print("Para estudar, ative os recursos no console:")
+print('1. Fly:   ToggleFeature("Fly")')
+print('2. ESP:   ToggleFeature("ESP")')
+print('3. Aimbot:ToggleFeature("Aimbot")')
+print('4. Revistar:ToggleFeature("AutoRevistar")')
+print('5. Mudar Fly Speed (padrão 25): Config.FlySpeed = 50')
